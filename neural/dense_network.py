@@ -114,6 +114,40 @@ class DenseNetwork:
         probs = softmax(np.dot(layer_2, self.weights_2_3))
         return probs.argmax(axis=1)
 
+    def evaluate(self, x_test, y_test, batch_size: int = 1024, verbose: bool = True) -> float:
+        x_test = np.asarray(x_test)
+        y_test = np.asarray(y_test)
+
+        if batch_size <= 0:
+            raise ValueError("batch_size must be > 0")
+        if x_test.ndim != 2 or x_test.shape[1] != self.input_size:
+            raise ValueError(f"x_test must have shape (N, {self.input_size}), got {x_test.shape}")
+        if y_test.ndim != 2 or y_test.shape[1] != self.output_size:
+            raise ValueError(f"y_test must be one-hot with shape (N, {self.output_size}), got {y_test.shape}")
+        if x_test.shape[0] != y_test.shape[0]:
+            raise ValueError("x_test and y_test must have the same length")
+        if self.weights_0_1 is None or self.weights_1_2 is None or self.weights_2_3 is None:
+            raise RuntimeError("Model is not initialized. Call fit() or init_weights() first.")
+
+        correct_cnt = 0
+        n = int(x_test.shape[0])
+        num_batches = int(np.ceil(n / float(batch_size)))
+        for i in range(num_batches):
+            batch_start, batch_end = (i * batch_size), min((i + 1) * batch_size, n)
+            xb = x_test[batch_start:batch_end]
+            yb = y_test[batch_start:batch_end]
+
+            layer_1 = tanh(np.dot(xb, self.weights_0_1))
+            layer_2 = tanh(np.dot(layer_1, self.weights_1_2))
+            probs = softmax(np.dot(layer_2, self.weights_2_3))
+
+            correct_cnt += int((probs.argmax(axis=1) == yb.argmax(axis=1)).sum())
+
+        acc = correct_cnt / float(max(1, n))
+        if verbose:
+            sys.stdout.write(f"Test-Acc:{acc}\n")
+        return acc
+
     def load_model(self):
         pass
 

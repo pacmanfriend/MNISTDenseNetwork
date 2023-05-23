@@ -3,7 +3,7 @@ from neural import DenseNetwork
 
 
 def main():
-    data_size = 1000
+    data_size = 60000
 
     from tensorflow.keras.datasets import mnist
 
@@ -17,10 +17,8 @@ def main():
 
     model = DenseNetwork()
     model.init_weights()
-    model.fit(x_train=images, y_train=labels, batch_size=16, epochs=300, alpha=0.2)
-
-    predicts = model.predict(test_images)
-    test_acc = float((predicts == y_test).mean())
+    model.fit(x_train=images, y_train=labels, batch_size=32, epochs=50, alpha=0.2)
+    test_acc = model.evaluate(x_test=test_images, y_test=test_labels, verbose=True)
     print(f"Final test accuracy: {test_acc:.4f}")
 
 if __name__ == '__main__':
