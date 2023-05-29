@@ -4,6 +4,7 @@ from neural import DenseNetwork
 
 def main():
     data_size = 60000
+    model_path = "models/dense_mnist.h5"
 
     from tensorflow.keras.datasets import mnist
 
@@ -20,6 +21,13 @@ def main():
     model.fit(x_train=images, y_train=labels, batch_size=32, epochs=50, alpha=0.2)
     test_acc = model.evaluate(x_test=test_images, y_test=test_labels, verbose=True)
     print(f"Final test accuracy: {test_acc:.4f}")
+
+    model.save_model(model_path)
+
+    loaded = DenseNetwork()
+    loaded.load_model(model_path)
+    loaded_acc = loaded.evaluate(x_test=test_images, y_test=test_labels, verbose=False)
+    print(f"Loaded model test accuracy: {loaded_acc:.4f}")
 
 if __name__ == '__main__':
     main()

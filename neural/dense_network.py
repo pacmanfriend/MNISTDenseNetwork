@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import sys
 import time
+from pathlib import Path
 
 
 class DenseNetwork:
@@ -148,11 +149,53 @@ class DenseNetwork:
             sys.stdout.write(f"Test-Acc:{acc}\n")
         return acc
 
-    def load_model(self):
-        pass
+    def save_model(self, path: str | Path) -> None:
+        if self.weights_0_1 is None or self.weights_1_2 is None or self.weights_2_3 is None:
+            raise RuntimeError("Model is not initialized. Call fit() or init_weights() first.")
 
-    def save_model(self):
-        pass
+        try:
+            import h5py  # type: ignore
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError("h5py is required for HDF5 save/load. Install it via requirements.txt.") from e
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with h5py.File(path, "w") as f:
+            arch = f.create_group("arch")
+            arch.attrs["input_size"] = int(self.input_size)
+            arch.attrs["hidden_size"] = int(self.hidden_size)
+            arch.attrs["output_size"] = int(self.output_size)
+
+            w = f.create_group("weights")
+            w.create_dataset("weights_0_1", data=self.weights_0_1)
+            w.create_dataset("weights_1_2", data=self.weights_1_2)
+            w.create_dataset("weights_2_3", data=self.weights_2_3)
+
+    def load_model(self, path: str | Path) -> None:
+        try:
+            import h5py  # type: ignore
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError("h5py is required for HDF5 save/load. Install it via requirements.txt.") from e
+
+        path = Path(path)
+        with h5py.File(path, "r") as f:
+            arch = f["arch"].attrs
+            input_size = int(arch["input_size"])
+            hidden_size = int(arch["hidden_size"])
+            output_size = int(arch["output_size"])
+
+            if (input_size, hidden_size, output_size) != (self.input_size, self.hidden_size, self.output_size):
+                raise ValueError(
+                    "Model architecture mismatch: "
+                    f"file has ({input_size}, {hidden_size}, {output_size}), "
+                    f"but instance is ({self.input_size}, {self.hidden_size}, {self.output_size})"
+                )
+
+            w = f["weights"]
+            self.weights_0_1 = np.asarray(w["weights_0_1"], dtype=np.float64)
+            self.weights_1_2 = np.asarray(w["weights_1_2"], dtype=np.float64)
+            self.weights_2_3 = np.asarray(w["weights_2_3"], dtype=np.float64)
 
 
 relu = lambda x: (x >= 0) * x
