@@ -2,3 +2,5 @@ numpy
 torch
 tensorflow
 h5py
+pillow
+scikit-image
