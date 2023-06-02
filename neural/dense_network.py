@@ -5,6 +5,7 @@ import sys
 import time
 from pathlib import Path
 
+from copy import deepcopy
 
 class DenseNetwork:
     def __init__(self):
@@ -196,6 +197,9 @@ class DenseNetwork:
             self.weights_0_1 = np.asarray(w["weights_0_1"], dtype=np.float64)
             self.weights_1_2 = np.asarray(w["weights_1_2"], dtype=np.float64)
             self.weights_2_3 = np.asarray(w["weights_2_3"], dtype=np.float64)
+
+    def copy_model(self):
+        return deepcopy(self)
 
 
 relu = lambda x: (x >= 0) * x

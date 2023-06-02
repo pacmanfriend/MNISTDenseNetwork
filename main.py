@@ -2,7 +2,7 @@ import argparse
 
 import numpy as np
 from neural import DenseNetwork
-from neural.tools import image_downsample, load_image
+from neural.tools import load_image_cv
 
 import tkinter as tk
 from tkinter import filedialog
@@ -69,9 +69,8 @@ def train(args) -> None:
     print(f"Loaded model test accuracy: {loaded_acc:.4f}")
 
     if args.image:
-        img = load_image(args.image)
-        img28 = image_downsample(img)  # (28, 28) in [0,1]
-        x = img28.reshape(1, 28 * 28).astype(np.float32)
+        img28 = load_image_cv(args.image).astype(np.float32) / 255.0
+        x = img28.reshape(1, 28 * 28)
         pred = int(loaded.predict(x)[0])
         print(f"Predicted digit: {pred}")
 
@@ -79,8 +78,6 @@ class GUI:
     def __init__(self):
         self.__root = tk.Tk()
 
-        self.loaded_image = None
-        self.downsampled_image: np.ndarray = None
         self.grayscale_image: np.ndarray = None
         self.model: DenseNetwork = None
         self.x_train = None
@@ -88,20 +85,13 @@ class GUI:
         self.y_train = None
         self.y_test = None
 
+        self.result = tk.StringVar()
+        self.threads_count = tk.IntVar()
+
         self.buttons_frame = tk.Frame(self.__root, width=50, pady=10, padx=10)
         self.load_img_btn = tk.Button(
             self.buttons_frame,
             text="Загрузить изображение",
-            padx=2,
-            pady=2,
-            width=30,
-            height=1,
-            bg="white",
-            fg="black",
-        )
-        self.convert_to_grey_btn = tk.Button(
-            self.buttons_frame,
-            text="Нормализовать (0..1)",
             padx=2,
             pady=2,
             width=30,
@@ -150,14 +140,12 @@ class GUI:
         self.__root.geometry("1280x720+50+50")
 
         self.load_img_btn.bind("<Button-1>", self.load_image_from_filesystem)
-        self.convert_to_grey_btn.bind('<Button-1>', self.convert_to_grayscale)
         self.load_model_btn.bind('<Button-1>', self.load_model)
         self.predict_btn.bind('<Button-1>', self.get_result)
         self.show_train_btn.bind('<Button-1>', self.show_mnist)
 
         self.buttons_frame.pack(anchor=tk.NW)
         self.load_img_btn.pack(anchor=tk.NW)
-        self.convert_to_grey_btn.pack(anchor=tk.NW)
         self.load_model_btn.pack(anchor=tk.NW)
         self.predict_btn.pack(anchor=tk.NW)
         self.show_train_btn.pack(anchor=tk.NW)
@@ -185,7 +173,7 @@ class GUI:
             self.__root.title("Image Classifier — сначала загрузите изображение")
             return
 
-        x = self.grayscale_image.reshape(1, 28 * 28).astype(np.float32)
+        x = (self.grayscale_image.astype(np.float32) / 255.0).reshape(1, 28 * 28)
         pred = int(self.model.predict(x)[0])
         self.__root.title(f"Image Classifier — Predicted: {pred}")
 
@@ -193,29 +181,16 @@ class GUI:
         filepath = filedialog.askopenfilename()
 
         if filepath != "":
-            self.loaded_image = load_image(filepath)
-            self.downsampled_image = image_downsample(self.loaded_image)  # (28, 28) float in [0,1]
-            self.grayscale_image = self.downsampled_image
+            self.grayscale_image = load_image_cv(filepath)
 
-            self.image_plot.imshow(self.downsampled_image)
+            self.image_plot.imshow(self.grayscale_image)
 
             self.canvas.draw()
             self.canvas.get_tk_widget().pack(anchor=tk.NE)
 
-    def convert_to_grayscale(self, event):
-        if self.downsampled_image is None:
-            return
-
-        img = self.downsampled_image.astype(np.float32)
-        vmin = float(img.min())
-        vmax = float(img.max())
-        if vmax > vmin:
-            img = (img - vmin) / (vmax - vmin)
-        self.grayscale_image = img
-
-        self.image_plot.imshow(self.grayscale_image)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(anchor=tk.NE)
+            # toolbar = NavigationToolbar2Tk(canvas, root)
+            # toolbar.update()
+            # canvas.get_tk_widget().pack(anchor=NE)
 
     def load_mnist_data(self):
         from tensorflow.keras.datasets import mnist
