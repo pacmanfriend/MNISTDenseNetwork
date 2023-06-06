@@ -89,48 +89,25 @@ class GUI:
         self.threads_count = tk.IntVar()
 
         self.buttons_frame = tk.Frame(self.__root, width=50, pady=10, padx=10)
-        self.load_img_btn = tk.Button(
-            self.buttons_frame,
-            text="Загрузить изображение",
-            padx=2,
-            pady=2,
-            width=30,
-            height=1,
-            bg="white",
-            fg="black",
-        )
+        self.load_img_btn = tk.Button(self.buttons_frame, text="Загрузить изображение", padx=2, pady=2, width=30, height=1,
+                                   bg='white', fg='black', command=self.load_image_from_filesystem)
 
-        self.load_model_btn = tk.Button(
-            self.buttons_frame,
-            text="Загрузить модель",
-            padx=2,
-            pady=2,
-            width=30,
-            height=1,
-            bg="white",
-            fg="black",
-        )
-        self.predict_btn = tk.Button(
-            self.buttons_frame,
-            text="Определить цифру",
-            padx=2,
-            pady=2,
-            width=30,
-            height=1,
-            bg="white",
-            fg="black",
-        )
+        self.create_model_btn = tk.Button(self.buttons_frame, text="Создать модель", padx=2, pady=2,
+                                       width=30, height=1, bg='white', fg='black', command=self.create_model)
+        self.train_model_btn = tk.Button(self.buttons_frame, text="Обучить модель", padx=2, pady=2,
+                                      width=30, height=1, bg='white', fg='black')
+        self.save_model_btn = tk.Button(self.buttons_frame, text="Сохранить модель", padx=2, pady=2,
+                                     width=30, height=1, bg='white', fg='black', command=self.save_model)
+        self.show_model_info_btn = tk.Button(self.buttons_frame, text='Показать информацию о модели', padx=2, pady=2,
+                                          width=30, height=1, bg='white', fg='black')
 
-        self.show_train_btn = tk.Button(
-            self.buttons_frame,
-            text="Тренировочные данные",
-            padx=2,
-            pady=2,
-            width=30,
-            height=1,
-            bg="white",
-            fg="black",
-        )
+        self.load_model_btn = tk.Button(self.buttons_frame, text='Загрузить модель', padx=2, pady=2,
+                                     width=30, height=1, bg='white', fg='black', command=self.load_model)
+        self.predict_btn = tk.Button(self.buttons_frame, text='Определить цифру', padx=2, pady=2,
+                                  width=30, height=1, bg='white', fg='black', command=self.predict)
+
+        self.show_train_btn = tk.Button(self.buttons_frame, text="Тренировочные данные", padx=2, pady=2,
+                                     width=30, height=1, bg='white', fg='black', command=self.show_mnist)
 
         self.image_plot = None
         self.canvas = None
@@ -139,14 +116,11 @@ class GUI:
         self.__root.title("Image Classifier")
         self.__root.geometry("1280x720+50+50")
 
-        self.load_img_btn.bind("<Button-1>", self.load_image_from_filesystem)
-        self.load_model_btn.bind('<Button-1>', self.load_model)
-        self.predict_btn.bind('<Button-1>', self.get_result)
-        self.show_train_btn.bind('<Button-1>', self.show_mnist)
-
-        self.buttons_frame.pack(anchor=tk.NW)
+        self.buttons_frame.pack(anchor=tk.NW, side=tk.LEFT)
         self.load_img_btn.pack(anchor=tk.NW)
         self.load_model_btn.pack(anchor=tk.NW)
+        self.create_model_btn.pack(anchor=tk.NW)
+        self.save_model_btn.pack(anchor=tk.NW)
         self.predict_btn.pack(anchor=tk.NW)
         self.show_train_btn.pack(anchor=tk.NW)
 
@@ -154,18 +128,18 @@ class GUI:
         self.image_plot = fig.add_subplot()
         self.canvas = FigureCanvasTkAgg(fig, master=self.__root)
         self.canvas.draw()
-        self.canvas.get_tk_widget().pack(anchor=tk.NE)
+        self.canvas.get_tk_widget().pack(anchor=tk.NE, side=tk.TOP)
 
         self.__root.mainloop()
 
-    def load_model(self, event):
+    def load_model(self, event=None):
         model_path = filedialog.askopenfilename()
 
         if model_path != "":
             self.model = DenseNetwork()
             self.model.load_model(model_path)
 
-    def get_result(self, event):
+    def predict(self, event=None):
         if self.model is None:
             self.__root.title("Image Classifier — сначала загрузите модель")
             return
@@ -177,7 +151,7 @@ class GUI:
         pred = int(self.model.predict(x)[0])
         self.__root.title(f"Image Classifier — Predicted: {pred}")
 
-    def load_image_from_filesystem(self, event):
+    def load_image_from_filesystem(self, event=None):
         filepath = filedialog.askopenfilename()
 
         if filepath != "":
@@ -201,7 +175,7 @@ class GUI:
         self.y_train = y_train
         self.y_test = y_test
 
-    def show_mnist(self, event):
+    def show_mnist(self, event=None):
         mnist_win = tk.Tk()
         mnist_win.geometry('1280x720+50+50')
 
@@ -216,6 +190,22 @@ class GUI:
         canvas = FigureCanvasTkAgg(fig, master=mnist_win)
         canvas.draw()
         canvas.get_tk_widget().pack(anchor=tk.CENTER)
+
+    def create_model(self, event=None):
+        self.model = DenseNetwork()
+        self.model.init_weights()
+
+    def save_model(self):
+        if self.model is None:
+            self.__root.title("Image Classifier — нет модели для сохранения")
+            return
+        filepath = filedialog.asksaveasfilename()
+
+        if filepath != "":
+            self.model.save_model(filepath)
+
+    def show_model_info(self):
+        pass
 
 
 if __name__ == '__main__':
