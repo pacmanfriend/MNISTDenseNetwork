@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import multiprocessing
 import numpy as np
 import sys
 import time
 from pathlib import Path
 
 from copy import deepcopy
+
+_MIN_SAMPLES_PER_WORKER = 5_000
 
 class DenseNetwork:
     def __init__(self):
@@ -22,7 +25,8 @@ class DenseNetwork:
         self.weights_1_2 = 0.2 * np.random.random((self.hidden_size, self.hidden_size)) - 0.1
         self.weights_2_3 = 0.2 * np.random.random((self.hidden_size, self.output_size)) - 0.1
 
-    def fit(self, x_train, y_train, batch_size, epochs, validation_split=0.1, alpha=0.01):
+    def fit(self, x_train, y_train, batch_size, epochs, bar=None, grads_dict=None, weights_dict=None,
+            validation_split=0.1, alpha=0.01, output_func=None):
         if self.weights_0_1 is None or self.weights_1_2 is None or self.weights_2_3 is None:
             self.init_weights()
 
@@ -59,28 +63,32 @@ class DenseNetwork:
 
             start = time.monotonic()
 
-            num_batches = int(np.ceil(train_size / float(batch_size)))
-            for i in range(num_batches):
-                batch_start, batch_end = (i * batch_size), min((i + 1) * batch_size, train_size)
-                bs = batch_end - batch_start
+            num_workers = min(
+                multiprocessing.cpu_count(),
+                max(1, train_size // _MIN_SAMPLES_PER_WORKER),
+            )
 
-                layer_0 = train_images[batch_start:batch_end]
-                layer_1 = tanh(np.dot(layer_0, self.weights_0_1))
-                dropout_mask = np.random.randint(2, size=layer_1.shape)
-                layer_1_dropout = layer_1 * dropout_mask * 2
-                layer_2 = tanh(np.dot(layer_1_dropout, self.weights_1_2))
-                layer_3 = softmax(np.dot(layer_2, self.weights_2_3))
+            shards_x = np.array_split(train_images, num_workers)
+            shards_y = np.array_split(train_labels, num_workers)
+            shard_args = [
+                (sx, sy, self.weights_0_1, self.weights_1_2, self.weights_2_3, batch_size)
+                for sx, sy in zip(shards_x, shards_y)
+            ]
 
-                correct_cnt += int((layer_3.argmax(axis=1) == train_labels[batch_start:batch_end].argmax(axis=1)).sum())
+            if num_workers > 1:
+                with multiprocessing.Pool(num_workers) as pool:
+                    results = pool.map(_train_shard, shard_args)
+            else:
+                results = [_train_shard(shard_args[0])]
 
-                layer_3_delta = (train_labels[batch_start:batch_end] - layer_3) / float(bs)
-                layer_2_delta = layer_3_delta.dot(self.weights_2_3.T) * tanh2deriv(layer_2)
-                layer_1_delta = layer_2_delta.dot(self.weights_1_2.T) * tanh2deriv(layer_1)
-                layer_1_delta *= dropout_mask * 2
+            dw01 = sum(r[0] for r in results)
+            dw12 = sum(r[1] for r in results)
+            dw23 = sum(r[2] for r in results)
+            correct_cnt = sum(r[3] for r in results)
 
-                self.weights_2_3 += alpha * layer_2.T.dot(layer_3_delta)
-                self.weights_1_2 += alpha * layer_1_dropout.T.dot(layer_2_delta)
-                self.weights_0_1 += alpha * layer_0.T.dot(layer_1_delta)
+            self.weights_0_1 += alpha * dw01
+            self.weights_1_2 += alpha * dw12
+            self.weights_2_3 += alpha * dw23
 
             if validation_size > 0:
                 num_val_batches = int(np.ceil(validation_size / float(batch_size)))
@@ -218,3 +226,42 @@ def softmax(x):
     x = x - np.max(x, axis=1, keepdims=True)
     temp = np.exp(x)
     return temp / np.sum(temp, axis=1, keepdims=True)
+
+
+def _train_shard(args):
+    """Compute accumulated gradient updates for one data shard (runs in a worker process)."""
+    x_shard, y_shard, w01, w12, w23, batch_size = args
+    shard_size = x_shard.shape[0]
+
+    dw01 = np.zeros_like(w01)
+    dw12 = np.zeros_like(w12)
+    dw23 = np.zeros_like(w23)
+    correct_cnt = 0
+
+    num_batches = int(np.ceil(shard_size / float(batch_size)))
+    for i in range(num_batches):
+        batch_start = i * batch_size
+        batch_end = min((i + 1) * batch_size, shard_size)
+        bs = batch_end - batch_start
+
+        layer_0 = x_shard[batch_start:batch_end]
+        layer_1 = tanh(np.dot(layer_0, w01))
+        dropout_mask = np.random.randint(2, size=layer_1.shape)
+        layer_1_dropout = layer_1 * dropout_mask * 2
+        layer_2 = tanh(np.dot(layer_1_dropout, w12))
+        layer_3 = softmax(np.dot(layer_2, w23))
+
+        correct_cnt += int(
+            (layer_3.argmax(axis=1) == y_shard[batch_start:batch_end].argmax(axis=1)).sum()
+        )
+
+        layer_3_delta = (y_shard[batch_start:batch_end] - layer_3) / float(bs)
+        layer_2_delta = layer_3_delta.dot(w23.T) * tanh2deriv(layer_2)
+        layer_1_delta = layer_2_delta.dot(w12.T) * tanh2deriv(layer_1)
+        layer_1_delta *= dropout_mask * 2
+
+        dw23 += layer_2.T.dot(layer_3_delta)
+        dw12 += layer_1_dropout.T.dot(layer_2_delta)
+        dw01 += layer_0.T.dot(layer_1_delta)
+
+    return dw01, dw12, dw23, correct_cnt
