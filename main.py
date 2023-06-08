@@ -9,7 +9,7 @@ from tkinter import filedialog
 
 from tkinter import messagebox
 
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, current_process
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -105,16 +105,16 @@ class GUI:
 
         self.load_img_btn = tk.Button(self.buttons_frame, text="Загрузить изображение", padx=2, pady=2, width=30, height=1,
                                    bg='white', fg='black', command=self.load_image_from_filesystem)
-        self.create_model_btn = tk.Button(self.buttons_frame, text="Создать модель", padx=2, pady=2,
+        self.create_model_btn = tk.Button(self.buttons_frame, text="Создать нейросеть", padx=2, pady=2,
                                        width=30, height=1, bg='white', fg='black', command=self.create_model)
-        self.train_model_btn = tk.Button(self.threads_counter_frame, text="Начать обучение модель", padx=2, pady=2,
+        self.train_model_btn = tk.Button(self.threads_counter_frame, text="Начать обучение нейросети", padx=2, pady=2,
                                       width=30, height=1, bg='white', fg='black', command=self.train_model)
-        self.save_model_btn = tk.Button(self.buttons_frame, text="Сохранить модель", padx=2, pady=2,
+        self.save_model_btn = tk.Button(self.buttons_frame, text="Сохранить нейросеть", padx=2, pady=2,
                                      width=30, height=1, bg='white', fg='black', command=self.save_model)
-        self.show_model_info_btn = tk.Button(self.buttons_frame, text='Показать информацию о модели', padx=2, pady=2,
+        self.show_model_info_btn = tk.Button(self.buttons_frame, text='Показать информацию о нейросети', padx=2, pady=2,
                                           width=30, height=1, bg='white', fg='black')
 
-        self.load_model_btn = tk.Button(self.buttons_frame, text='Загрузить модель', padx=2, pady=2,
+        self.load_model_btn = tk.Button(self.buttons_frame, text='Загрузить нейросеть', padx=2, pady=2,
                                      width=30, height=1, bg='white', fg='black', command=self.load_model)
         self.predict_btn = tk.Button(self.buttons_frame, text='Определить цифру', padx=2, pady=2,
                                   width=30, height=1, bg='white', fg='black', command=self.predict)
@@ -211,10 +211,6 @@ class GUI:
             self.canvas.draw()
             self.canvas.get_tk_widget().pack(anchor=tk.NE)
 
-            # toolbar = NavigationToolbar2Tk(canvas, root)
-            # toolbar.update()
-            # canvas.get_tk_widget().pack(anchor=NE)
-
     def load_mnist_data(self):
         from tensorflow.keras.datasets import mnist
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -289,8 +285,15 @@ class GUI:
         acc = self.model.evaluate(test_images, test_labels, verbose=True)
         print(f"Test accuracy: {acc:.4f}")
 
+        messagebox.showinfo("Обучение", "Нейронная сеть обучена!")
+
     def show_model_info(self):
         pass
+
+def print_proc(a, b, c, d, i):
+    g = current_process().name
+
+    print(f"{g} Epoch: {i} Train-Err: {a} Train-Acc: {b} Validation-Err: {c} Validation-Acc: {d}")
 
 if __name__ == '__main__':
     main()
