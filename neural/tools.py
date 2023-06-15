@@ -6,21 +6,23 @@ import math
 
 def load_image_cv(image_path):
     gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if gray is None:
+        raise ValueError(f"Cannot read image: {image_path}")
 
     gray = cv2.resize(255 - gray, (28, 28))
 
     (thresh, gray) = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
-    while np.sum(gray[0]) == 0:
+    while gray.shape[0] > 1 and np.sum(gray[0]) == 0:
         gray = gray[1:]
 
-    while np.sum(gray[:, 0]) == 0:
+    while gray.shape[1] > 1 and np.sum(gray[:, 0]) == 0:
         gray = np.delete(gray, 0, 1)
 
-    while np.sum(gray[-1]) == 0:
+    while gray.shape[0] > 1 and np.sum(gray[-1]) == 0:
         gray = gray[:-1]
 
-    while np.sum(gray[:, -1]) == 0:
+    while gray.shape[1] > 1 and np.sum(gray[:, -1]) == 0:
         gray = np.delete(gray, -1, 1)
 
     rows, cols = gray.shape
