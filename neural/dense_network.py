@@ -6,8 +6,6 @@ import sys
 import time
 from pathlib import Path
 
-from copy import deepcopy
-
 _MIN_SAMPLES_PER_WORKER = 5_000
 
 class DenseNetwork:
@@ -25,8 +23,7 @@ class DenseNetwork:
         self.weights_1_2 = 0.2 * np.random.random((self.hidden_size, self.hidden_size)) - 0.1
         self.weights_2_3 = 0.2 * np.random.random((self.hidden_size, self.output_size)) - 0.1
 
-    def fit(self, x_train, y_train, batch_size, epochs, bar=None, grads_dict=None, weights_dict=None,
-            validation_split=0.1, alpha=0.01, output_func=None):
+    def fit(self, x_train, y_train, batch_size, epochs, validation_split=0.1, alpha=0.01, num_workers=None):
         if self.weights_0_1 is None or self.weights_1_2 is None or self.weights_2_3 is None:
             self.init_weights()
 
@@ -63,10 +60,13 @@ class DenseNetwork:
 
             start = time.monotonic()
 
-            num_workers = min(
-                multiprocessing.cpu_count(),
-                max(1, train_size // _MIN_SAMPLES_PER_WORKER),
-            )
+            if num_workers is None:
+                num_workers = min(
+                    multiprocessing.cpu_count(),
+                    max(1, train_size // _MIN_SAMPLES_PER_WORKER),
+                )
+            else:
+                num_workers = max(1, min(num_workers, multiprocessing.cpu_count()))
 
             shards_x = np.array_split(train_images, num_workers)
             shards_y = np.array_split(train_labels, num_workers)
@@ -205,14 +205,6 @@ class DenseNetwork:
             self.weights_0_1 = np.asarray(w["weights_0_1"], dtype=np.float64)
             self.weights_1_2 = np.asarray(w["weights_1_2"], dtype=np.float64)
             self.weights_2_3 = np.asarray(w["weights_2_3"], dtype=np.float64)
-
-    def copy_model(self):
-        return deepcopy(self)
-
-
-relu = lambda x: (x >= 0) * x
-relu2deriv = lambda x: x >= 0
-
 
 def tanh(x):
     return np.tanh(x)
