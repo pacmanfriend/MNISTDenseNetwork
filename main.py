@@ -1,3 +1,4 @@
+import threading
 import time
 import numpy as np
 from neural import DenseNetwork
@@ -47,7 +48,7 @@ class GUI:
         self.save_model_btn = tk.Button(self.buttons_frame, text="Сохранить нейросеть", padx=2, pady=2,
                                      width=30, height=1, bg='white', fg='black', command=self.save_model)
         self.show_model_info_btn = tk.Button(self.buttons_frame, text='Показать информацию о нейросети', padx=2, pady=2,
-                                          width=30, height=1, bg='white', fg='black')
+                                          width=30, height=1, bg='white', fg='black', command=self.show_model_info)
         self.load_model_btn = tk.Button(self.buttons_frame, text='Загрузить нейросеть', padx=2, pady=2,
                                      width=30, height=1, bg='white', fg='black', command=self.load_model)
         self.predict_btn = tk.Button(self.buttons_frame, text='Определить цифру', padx=2, pady=2,
@@ -151,7 +152,7 @@ class GUI:
         self.max_test_size = len(self.x_test)
 
     def show_mnist(self, event=None):
-        mnist_win = tk.Tk()
+        mnist_win = tk.Toplevel(self.__root)
         mnist_win.geometry('1280x720+50+50')
 
         fig = plt.figure(figsize=(10, 10))
@@ -188,6 +189,14 @@ class GUI:
             train_size = None
 
         try:
+            num_workers = int(self.threads_entry.get())
+            if not (1 <= num_workers <= cpu_count()):
+                errors.append(f"Количество потоков: от 1 до {cpu_count()}")
+        except ValueError:
+            errors.append("Количество потоков: целое число")
+            num_workers = None
+
+        try:
             epochs = int(self.epochs_entry.get())
             if epochs <= 0:
                 errors.append("Количество эпох: положительное целое число")
@@ -214,7 +223,7 @@ class GUI:
         if errors:
             messagebox.showerror("Ошибка параметров", "\n".join(errors))
             return None
-        return train_size, epochs, batch_size, alpha
+        return train_size, epochs, batch_size, alpha, num_workers
 
     def train_model(self):
         if self.model is None:
@@ -224,22 +233,53 @@ class GUI:
         params = self._get_train_params()
         if params is None:
             return
-        train_size, epochs, batch_size, alpha = params
+        train_size, epochs, batch_size, alpha, num_workers = params
 
         images = self.x_train[:train_size].reshape(train_size, 28 * 28).astype(np.float32) / 255.0
         labels = np.eye(10, dtype=np.float32)[self.y_train[:train_size]]
-
-        start_time = time.monotonic()
-        self.model.fit(images, labels, batch_size=batch_size, epochs=epochs, validation_split=0.1, alpha=alpha)
-        print(f"Training time: {time.monotonic() - start_time:.2f}s")
-
         test_images = self.x_test.reshape(len(self.x_test), 28 * 28).astype(np.float32) / 255.0
         test_labels = np.eye(10, dtype=np.float32)[self.y_test]
 
-        acc = self.model.evaluate(test_images, test_labels, verbose=True)
-        print(f"Test accuracy: {acc:.4f}")
+        self.train_model_btn.config(state=tk.DISABLED)
 
+        def run():
+            start_time = time.monotonic()
+            self.model.fit(images, labels, batch_size=batch_size, epochs=epochs, validation_split=0.1, alpha=alpha, num_workers=num_workers)
+            elapsed = time.monotonic() - start_time
+            acc = self.model.evaluate(test_images, test_labels, verbose=True)
+            print(f"Training time: {elapsed:.2f}s  Test accuracy: {acc:.4f}")
+            self.__root.after(0, lambda: self._on_train_done(acc))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_train_done(self, acc: float):
+        self.train_model_btn.config(state=tk.NORMAL)
         messagebox.showinfo("Обучение", f"Нейронная сеть обучена!\nТочность на тесте: {acc:.4f}")
+
+    def show_model_info(self):
+        if self.model is None:
+            messagebox.showinfo("Информация", "Нейросеть не загружена.")
+            return
+        w01 = self.model.weights_0_1
+        w12 = self.model.weights_1_2
+        w23 = self.model.weights_2_3
+        if w01 is not None and w12 is not None and w23 is not None:
+            total = w01.size + w12.size + w23.size
+            info = (
+                f"Архитектура:\n"
+                f"  Вход:      {self.model.input_size} нейронов\n"
+                f"  Скрытый 1: {self.model.hidden_size} нейронов (tanh)\n"
+                f"  Скрытый 2: {self.model.hidden_size} нейронов (tanh)\n"
+                f"  Выход:     {self.model.output_size} нейронов (softmax)\n\n"
+                f"Веса:\n"
+                f"  weights_0_1: {w01.shape}\n"
+                f"  weights_1_2: {w12.shape}\n"
+                f"  weights_2_3: {w23.shape}\n"
+                f"  Всего параметров: {total:,}"
+            )
+        else:
+            info = "Нейросеть создана, но веса не инициализированы."
+        messagebox.showinfo("Информация о нейросети", info)
 
 
 if __name__ == '__main__':
