@@ -44,6 +44,14 @@ class DenseNetwork:
         validation_size = int(len(x_train) * validation_split)
         train_size = int(len(x_train) - validation_size)
 
+        if num_workers is None:
+            num_workers = min(
+                multiprocessing.cpu_count(),
+                max(1, train_size // _MIN_SAMPLES_PER_WORKER),
+            )
+        else:
+            num_workers = max(1, min(num_workers, multiprocessing.cpu_count()))
+
         for e in range(epochs):
             correct_cnt = 0
             test_correct_cnt = 0
@@ -59,14 +67,6 @@ class DenseNetwork:
             validation_labels = y_shuf[train_size:]
 
             start = time.monotonic()
-
-            if num_workers is None:
-                num_workers = min(
-                    multiprocessing.cpu_count(),
-                    max(1, train_size // _MIN_SAMPLES_PER_WORKER),
-                )
-            else:
-                num_workers = max(1, min(num_workers, multiprocessing.cpu_count()))
 
             shards_x = np.array_split(train_images, num_workers)
             shards_y = np.array_split(train_labels, num_workers)
@@ -86,9 +86,10 @@ class DenseNetwork:
             dw23 = sum(r[2] for r in results)
             correct_cnt = sum(r[3] for r in results)
 
-            self.weights_0_1 += alpha * dw01
-            self.weights_1_2 += alpha * dw12
-            self.weights_2_3 += alpha * dw23
+            total_batches = sum(int(np.ceil(sx.shape[0] / batch_size)) for sx in shards_x)
+            self.weights_0_1 += alpha * dw01 / total_batches
+            self.weights_1_2 += alpha * dw12 / total_batches
+            self.weights_2_3 += alpha * dw23 / total_batches
 
             if validation_size > 0:
                 num_val_batches = int(np.ceil(validation_size / float(batch_size)))
