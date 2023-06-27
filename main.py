@@ -100,6 +100,7 @@ class GUI:
         self.create_model_btn.pack(anchor=tk.NW)
         self.train_model_btn.pack(anchor=tk.NW)
         self.save_model_btn.pack(anchor=tk.NW)
+        self.show_model_info_btn.pack(anchor=tk.NW)
         self.predict_btn.pack(anchor=tk.NW)
         self.show_train_btn.pack(anchor=tk.NW)
 
