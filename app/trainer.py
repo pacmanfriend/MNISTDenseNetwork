@@ -4,8 +4,8 @@ import threading
 import time
 from typing import Callable
 
-import numpy as np
-
+from app.config import TrainingConfig
+from app.preprocessing import flatten_and_normalize_images, one_hot_labels
 from app.state import AppState
 
 
@@ -20,35 +20,48 @@ class TrainingController:
 
     def start(
         self,
-        train_size: int,
-        epochs: int,
-        batch_size: int,
-        alpha: float,
-        num_workers: int,
+        config: TrainingConfig,
         on_epoch_end: Callable[[int, float, float], None] | None = None,
         on_done: Callable[[float, float], None] | None = None,
+        on_error: Callable[[Exception], None] | None = None,
     ) -> None:
         if self.is_running:
             return
 
         state = self._state
-        images      = state.x_train[:train_size].reshape(train_size, 28 * 28).astype(np.float32) / 255.0
-        labels      = np.eye(10, dtype=np.float32)[state.y_train[:train_size]]
-        test_images = state.x_test.reshape(len(state.x_test), 28 * 28).astype(np.float32) / 255.0
-        test_labels = np.eye(10, dtype=np.float32)[state.y_test]
+        if state.model is None:
+            raise RuntimeError("Model is not created or loaded.")
+        if state.mnist is None:
+            raise RuntimeError("MNIST data is not loaded.")
+
+        errors = config.validate(state.max_train_size)
+        if errors:
+            raise ValueError("\n".join(errors))
+
+        mnist = state.mnist
+        images = flatten_and_normalize_images(mnist.x_train[:config.train_size])
+        labels = one_hot_labels(mnist.y_train[:config.train_size])
+        test_images = flatten_and_normalize_images(mnist.x_test)
+        test_labels = one_hot_labels(mnist.y_test)
+        model = state.model
 
         def run():
-            t0 = time.monotonic()
-            state.model.fit(
-                images, labels,
-                batch_size=batch_size, epochs=epochs,
-                validation_split=0.1, alpha=alpha,
-                num_workers=num_workers, on_epoch_end=on_epoch_end,
-            )
-            elapsed = time.monotonic() - t0
-            acc = state.model.evaluate(test_images, test_labels, verbose=True)
-            if on_done is not None:
-                on_done(acc, elapsed)
+            try:
+                t0 = time.monotonic()
+                model.fit(
+                    images, labels,
+                    batch_size=config.batch_size, epochs=config.epochs,
+                    validation_split=config.validation_split, alpha=config.alpha,
+                    num_workers=config.num_workers, on_epoch_end=on_epoch_end,
+                    verbose=False,
+                )
+                elapsed = time.monotonic() - t0
+                acc = model.evaluate(test_images, test_labels, verbose=False)
+                if on_done is not None:
+                    on_done(acc, elapsed)
+            except Exception as exc:
+                if on_error is not None:
+                    on_error(exc)
 
         self._thread = threading.Thread(target=run, daemon=True)
         self._thread.start()

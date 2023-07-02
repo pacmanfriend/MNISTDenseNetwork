@@ -9,6 +9,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from multiprocessing import cpu_count
 
+from app.config import TrainingConfig
+from app.datasets import load_mnist
+from app.preprocessing import prepare_digit_image
 from app.state import AppState
 from app.trainer import TrainingController
 from neural import DenseNetwork
@@ -140,8 +143,12 @@ class GUI:
 
     def _load_mnist_async(self):
         def load():
-            self._state.load_mnist()
-            self.__root.after(0, self._on_mnist_loaded)
+            try:
+                self._state.mnist = load_mnist()
+            except Exception as exc:
+                self.__root.after(0, lambda e=exc: self._on_mnist_load_error(e))
+            else:
+                self.__root.after(0, self._on_mnist_loaded)
         threading.Thread(target=load, daemon=True).start()
 
     def _on_mnist_loaded(self):
@@ -151,58 +158,58 @@ class GUI:
         self.show_train_btn.config(state=tk.NORMAL)
         self._set_status("Готово")
 
+    def _on_mnist_load_error(self, exc: Exception):
+        self._set_status("Ошибка загрузки MNIST")
+        messagebox.showerror("Ошибка загрузки MNIST", str(exc))
+
     # ------------------------------------------------------------------ ui helpers
 
     def _set_status(self, text: str):
         self.status_label.config(text=text)
 
     def _get_train_params(self):
-        errors = []
-
         try:
             train_size = int(self.train_size_entry.get())
-            if train_size <= 0 or train_size > self._state.max_train_size:
-                errors.append(f"Размер данных: от 1 до {self._state.max_train_size}")
         except ValueError:
-            errors.append("Размер данных: целое число")
-            train_size = None
+            messagebox.showerror("Ошибка параметров", "Размер данных: целое число")
+            return None
 
         try:
             num_workers = int(self.threads_entry.get())
-            if not (1 <= num_workers <= cpu_count()):
-                errors.append(f"Количество потоков: от 1 до {cpu_count()}")
         except ValueError:
-            errors.append("Количество потоков: целое число")
-            num_workers = None
+            messagebox.showerror("Ошибка параметров", "Количество потоков: целое число")
+            return None
 
         try:
             epochs = int(self.epochs_entry.get())
-            if epochs <= 0:
-                errors.append("Количество эпох: положительное целое число")
         except ValueError:
-            errors.append("Количество эпох: целое число")
-            epochs = None
+            messagebox.showerror("Ошибка параметров", "Количество эпох: целое число")
+            return None
 
         try:
             batch_size = int(self.batch_size_entry.get())
-            if batch_size <= 0:
-                errors.append("Размер батча: положительное целое число")
         except ValueError:
-            errors.append("Размер батча: целое число")
-            batch_size = None
+            messagebox.showerror("Ошибка параметров", "Размер батча: целое число")
+            return None
 
         try:
             alpha = float(self.alpha_entry.get())
-            if alpha <= 0:
-                errors.append("Alpha: положительное число")
         except ValueError:
-            errors.append("Alpha: число (например, 0.1)")
-            alpha = None
+            messagebox.showerror("Ошибка параметров", "Alpha: число (например, 0.1)")
+            return None
 
+        config = TrainingConfig(
+            train_size=train_size,
+            epochs=epochs,
+            batch_size=batch_size,
+            alpha=alpha,
+            num_workers=num_workers,
+        )
+        errors = config.validate(self._state.max_train_size, cpu_count())
         if errors:
             messagebox.showerror("Ошибка параметров", "\n".join(errors))
             return None
-        return train_size, epochs, batch_size, alpha, num_workers
+        return config
 
     # ------------------------------------------------------------------ model actions
 
@@ -262,7 +269,7 @@ class GUI:
         params = self._get_train_params()
         if params is None:
             return
-        train_size, epochs, batch_size, alpha, num_workers = params
+        config = params
 
         self.train_model_btn.config(state=tk.DISABLED)
         self._set_status("Обучение…")
@@ -271,24 +278,33 @@ class GUI:
             self.__root.after(
                 0,
                 lambda e=epoch, ta=train_acc, va=val_acc: self._set_status(
-                    f"Эпоха {e + 1}/{epochs} | Train: {ta:.3f} | Val: {va:.3f}"
+                    f"Эпоха {e + 1}/{config.epochs} | Train: {ta:.3f} | Val: {va:.3f}"
                 ),
             )
 
         def on_done(acc: float, elapsed: float):
             self.__root.after(0, lambda: self._on_train_done(acc, elapsed))
 
-        self._trainer.start(
-            train_size=train_size, epochs=epochs,
-            batch_size=batch_size, alpha=alpha,
-            num_workers=num_workers,
-            on_epoch_end=on_epoch_end, on_done=on_done,
-        )
+        def on_error(exc: Exception):
+            self.__root.after(0, lambda e=exc: self._on_train_error(e))
+
+        try:
+            self._trainer.start(
+                config=config,
+                on_epoch_end=on_epoch_end, on_done=on_done, on_error=on_error,
+            )
+        except Exception as exc:
+            self._on_train_error(exc)
 
     def _on_train_done(self, acc: float, elapsed: float):
         self.train_model_btn.config(state=tk.NORMAL)
         self._set_status(f"Обучение завершено | Test acc: {acc:.4f} | {elapsed:.1f}s")
         messagebox.showinfo("Обучение", f"Нейронная сеть обучена!\nТочность на тесте: {acc:.4f}")
+
+    def _on_train_error(self, exc: Exception):
+        self.train_model_btn.config(state=tk.NORMAL)
+        self._set_status("Ошибка обучения")
+        messagebox.showerror("Ошибка обучения", str(exc))
 
     # ------------------------------------------------------------------ image / predict
 
@@ -311,7 +327,7 @@ class GUI:
         if self._grayscale_image is None:
             self._set_status("Сначала загрузите изображение")
             return
-        x = (self._grayscale_image.astype(np.float32) / 255.0).reshape(1, 28 * 28)
+        x = prepare_digit_image(self._grayscale_image)
         pred = int(self._state.model.predict(x)[0])
         self.result_label['text'] = f'Результат: {pred}'
         self.__root.title(f"Image Classifier — Predicted: {pred}")
@@ -333,7 +349,7 @@ class GUI:
             ax.grid(False)
             ax.set_xticks([])
             ax.set_yticks([])
-            ax.imshow(self._state.x_train[i].reshape((28, 28)), cmap='gray')
+            ax.imshow(self._state.mnist.x_train[i].reshape((28, 28)), cmap='gray')
 
         canvas = FigureCanvasTkAgg(fig, master=win)
         canvas.draw()

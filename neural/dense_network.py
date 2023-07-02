@@ -62,6 +62,7 @@ class DenseNetwork:
         alpha: float = 0.01,
         num_workers: int | None = None,
         on_epoch_end: Callable[[int, float, float], None] | None = None,
+        verbose: bool = True,
     ) -> dict:
         if self.weights_0_1 is None or self.weights_1_2 is None or self.weights_2_3 is None:
             self.init_weights()
@@ -136,9 +137,10 @@ class DenseNetwork:
             history['val_acc'].append(val_acc)
 
             elapsed = time.monotonic() - start
-            sys.stdout.write(
-                f"I:{e} || Val-Acc:{val_acc:.4f} || Train-Acc:{train_acc:.4f} || {elapsed:.2f}s\n"
-            )
+            if verbose:
+                sys.stdout.write(
+                    f"I:{e} || Val-Acc:{val_acc:.4f} || Train-Acc:{train_acc:.4f} || {elapsed:.2f}s\n"
+                )
 
             if on_epoch_end is not None:
                 on_epoch_end(e, train_acc, val_acc)
