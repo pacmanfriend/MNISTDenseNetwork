@@ -2,8 +2,6 @@ numpy
 torch
 tensorflow
 h5py
-pillow
-scikit-image
 matplotlib
 opencv-python
 scipy
